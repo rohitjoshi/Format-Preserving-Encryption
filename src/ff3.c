@@ -3,6 +3,7 @@
 #include <math.h>
 #include <assert.h>
 #include <openssl/aes.h>
+#include <openssl/crypto.h>
 #include <openssl/bn.h>
 #include "fpe.h"
 #include "fpe_locl.h"
@@ -64,7 +65,8 @@ void num2str_rev(const BIGNUM *X, unsigned int *Y, unsigned int radix, int len, 
     return;
 }
 
-void FF3_encrypt(unsigned int *in, unsigned int *out, AES_KEY *aes_enc_ctx, const unsigned char *tweak, unsigned int radix, unsigned int inlen)
+void FF3_encrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak, unsigned int radix, unsigned int inlen,
+                 EVP_CIPHER_CTX *evp_ctx)
 {
     BIGNUM *bnum = BN_new(),
            *y = BN_new(),
@@ -73,6 +75,8 @@ void FF3_encrypt(unsigned int *in, unsigned int *out, AES_KEY *aes_enc_ctx, cons
            *qpow_u = BN_new(),
            *qpow_v = BN_new();
     BN_CTX *ctx = BN_CTX_new();
+	int rc = 0;
+	int outl;
 
     memcpy(out, in, inlen << 2);
     int u = ceil2(inlen, 1);
@@ -106,7 +110,8 @@ void FF3_encrypt(unsigned int *in, unsigned int *out, AES_KEY *aes_enc_ctx, cons
 
         // iii
         rev_bytes(P, 16);
-        AES_encrypt(P, S, aes_enc_ctx);
+        rc = EVP_EncryptUpdate(evp_ctx, S, &outl, P, 16);
+        assert(rc == 1);
         rev_bytes(S, 16);
 
         // iv
@@ -138,7 +143,8 @@ void FF3_encrypt(unsigned int *in, unsigned int *out, AES_KEY *aes_enc_ctx, cons
     return;
 }
 
-void FF3_decrypt(unsigned int *in, unsigned int *out, AES_KEY *aes_enc_ctx, const unsigned char *tweak, unsigned int radix, unsigned int inlen)
+void FF3_decrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak, unsigned int radix, unsigned int inlen,
+                 EVP_CIPHER_CTX *evp_ctx)
 {
     BIGNUM *bnum = BN_new(),
            *y = BN_new(),
@@ -147,6 +153,8 @@ void FF3_decrypt(unsigned int *in, unsigned int *out, AES_KEY *aes_enc_ctx, cons
            *qpow_u = BN_new(),
            *qpow_v = BN_new();
     BN_CTX *ctx = BN_CTX_new();
+	int rc = 0;
+	int outl;
 
     memcpy(out, in, inlen << 2);
     int u = ceil2(inlen, 1);
@@ -182,7 +190,8 @@ void FF3_decrypt(unsigned int *in, unsigned int *out, AES_KEY *aes_enc_ctx, cons
         // iii
         rev_bytes(P, 16);
         memset(S, 0x00, sizeof(S));
-        AES_encrypt(P, S, aes_enc_ctx);
+        rc = EVP_EncryptUpdate(evp_ctx, S, &outl, P, 16);
+        assert(rc == 1);
         rev_bytes(S, 16);
 
         // iv
@@ -229,21 +238,33 @@ int FPE_set_ff3_key(const unsigned char *userKey, const int bits, const unsigned
     unsigned char tmp[32];
     memcpy(tmp, userKey, bits >> 3);
     rev_bytes(tmp, bits >> 3);
-    ret = AES_set_encrypt_key(tmp, bits, &key->aes_enc_ctx);
+    key->evp_ctx = NULL;
+    const EVP_CIPHER *evp_cipher =
+            bits == 128 ? EVP_aes_128_ecb() : bits == 192 ? EVP_aes_192_ecb() : EVP_aes_256_ecb();
+    key->evp_ctx = EVP_CIPHER_CTX_new();
+    if (key->evp_ctx == NULL) {
+        return -3;
+    }
+    if (!EVP_CipherInit_ex(key->evp_ctx, evp_cipher, NULL,
+                           tmp, NULL, 1)) {
+        return -4;
+    }
+    EVP_CIPHER_CTX_set_padding(key->evp_ctx, 0);
+    ret = 0;
     return ret;
 }
 
 void FPE_unset_ff3_key(FPE_KEY *key)
 {
     OPENSSL_free(key->tweak);
+    EVP_CIPHER_CTX_free(key->evp_ctx);
 }
 
 void FPE_ff3_encrypt(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc)
 {
     if (enc)
-        FF3_encrypt(in, out, &key->aes_enc_ctx, key->tweak, key->radix, inlen);
+        FF3_encrypt(in, out, key->tweak, key->radix, inlen, key->evp_ctx);
 
     else 
-        FF3_decrypt(in, out, &key->aes_enc_ctx, key->tweak, key->radix, inlen);
+        FF3_decrypt(in, out, key->tweak, key->radix, inlen, key->evp_ctx);
 }
-
