@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
     printf("\n\n");
 
     printf("========== FF1 ==========\n");
-    FPE_ff1_encrypt(x, y, xlen, &ff1, FPE_ENCRYPT);
+    FPE_ff1_encrypt_128(x, y, xlen, &ff1, FPE_ENCRYPT);
 
     printf("ciphertext(numeral string):");
     for (int i = 0; i < xlen; ++i)    printf(" %d", y[i]);
@@ -93,14 +93,14 @@ int main(int argc, char *argv[])
     printf("ciphertext: %s\n\n", result);
 
     memset(x, 0, sizeof(x));
-    FPE_ff1_encrypt(y, x, xlen, &ff1, FPE_DECRYPT);
+    FPE_ff1_encrypt_128(y, x, xlen, &ff1, FPE_DECRYPT);
 
     printf("plaintext:");
     for (int i = 0; i < xlen; ++i)    printf(" %d", x[i]);
     printf("\n\n");
 
     printf("========== FF3 ==========\n");
-    FPE_ff3_encrypt(x, y, xlen, &ff3, FPE_ENCRYPT);
+    FPE_ff3_encrypt_128(x, y, xlen, &ff3, FPE_ENCRYPT);
 
     printf("ciphertext(numeral string):");
     for (int i = 0; i < xlen; ++i)    printf(" %d", y[i]);
@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
     printf("ciphertext: %s\n\n", result);
 
     memset(x, 0, sizeof(x));
-    FPE_ff3_encrypt(y, x, xlen, &ff3, FPE_DECRYPT);
+    FPE_ff3_encrypt_128(y, x, xlen, &ff3, FPE_DECRYPT);
 
     printf("plaintext:");
     for (int i = 0; i < xlen; ++i)    printf(" %d", x[i]);

@@ -1,7 +1,7 @@
 #ifndef HEADER_FPE_H
 # define HEADER_FPE_H
 
-# include <openssl/aes.h>
+# include <openssl/evp.h>
 
 # ifdef __cplusplus
 extern "C" {
@@ -18,7 +18,7 @@ struct fpe_key_st {
     unsigned int radix;
     unsigned int tweaklen;
     unsigned char *tweak;
-    AES_KEY aes_enc_ctx;
+    EVP_CIPHER_CTX *evp_ctx;
 };
 
 typedef struct fpe_key_st FPE_KEY;
@@ -29,6 +29,7 @@ int FPE_set_ff1_key(const unsigned char *userKey, const int bits, const unsigned
 void FPE_unset_ff1_key(FPE_KEY *key);
 
 void FPE_ff1_encrypt(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc);
+void FPE_ff1_encrypt_128(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc);
 
 /*** FF3 ***/
 int FPE_set_ff3_key(const unsigned char *userKey, const int bits, const unsigned char *tweak, const unsigned int radix, FPE_KEY *key);
@@ -36,6 +37,7 @@ int FPE_set_ff3_key(const unsigned char *userKey, const int bits, const unsigned
 void FPE_unset_ff3_key(FPE_KEY *key);
 
 void FPE_ff3_encrypt(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc);
+void FPE_ff3_encrypt_128(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc);
 
 # ifdef __cplusplus
 }

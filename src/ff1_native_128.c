@@ -4,34 +4,42 @@
 #include <assert.h>
 #include <openssl/aes.h>
 #include <openssl/crypto.h>
-#include <openssl/bn.h>
 #include "fpe.h"
 #include "fpe_locl.h"
 
 typedef unsigned __int128 uint128_t;
+typedef signed __int128 int128_t;
+
+// declare the size for this implementation, expected to be one of uint32_t, uint64_t, uint128_t
+// size MUST be even number of bytes
+typedef uint128_t native_size_t; 
+typedef int128_t native_signed_t; 
+
+// replace all BIGNUM operations with local native operations
+// NOTE: openssl/bn.h gets included indirectly via openssl/crypto.h
+// so we can't just recode them here, we need to use macros
+// to point to our local native implementation
+#include "bignum_native.h"
+
+static union {
+	long one;
+	char little;
+} is_endian = { 1 };
 
 // convert numeral string to number
-void str2num(BIGNUM *Y, const unsigned int *X, unsigned long long radix, unsigned int len, BN_CTX *ctx)
+static void str2num(BIGNUM *Y, const unsigned int *X, unsigned long long radix, unsigned int len, BN_CTX *ctx)
 {
-    BN_CTX_start(ctx);
-    BIGNUM *r = BN_CTX_get(ctx),
-           *x = BN_CTX_get(ctx);
-
-    BN_set_word(Y, 0);
-    BN_set_word(r, radix);
+    *Y = 0;
     for (int i = 0; i < len; ++i) {
         // Y = Y * radix + X[i]
-        BN_set_word(x, X[i]);
-        BN_mul(Y, Y, r, ctx);
-        BN_add(Y, Y, x);
+		*Y = *Y * radix + X[i];
     }
 
-    BN_CTX_end(ctx);
     return;
 }
 
 // convert number to numeral string
-void num2str(const BIGNUM *X, unsigned int *Y, unsigned int radix, int len, BN_CTX *ctx)
+static void num2str(const BIGNUM *X, unsigned int *Y, unsigned int radix, int len, BN_CTX *ctx)
 {
     memset(Y, 0, len << 2);
     unsigned int X_num_bytes = BN_num_bytes(X);
@@ -88,28 +96,26 @@ void num2str(const BIGNUM *X, unsigned int *Y, unsigned int radix, int len, BN_C
         return;
     }
 
-    BN_CTX_start(ctx);
-    BIGNUM *XX = BN_CTX_get(ctx);
+    BIGNUM r = 0,
+           XX = 0;
 
-    BN_copy(XX, X);
+    XX = *X;
+    r = radix;
     
     for (int i = len - 1; i >= 0; --i) {
-        // XX = XX / r
+        // XX / r = dv ... rem
         // Y[i] = XX % r
-        Y[i] = BN_div_word(XX, radix);
+        Y[i] = XX % r;
+        // XX = XX / r
+        XX = XX / r;
     }
 
-    BN_CTX_end(ctx);
     return;
 }
 
 static void initialize_P_Q(unsigned char *P, unsigned char *Q, size_t Qlen, int radix, size_t inlen, int u, const unsigned char *tweak, size_t tweaklen, int pad)
 {
     unsigned int temp;
-    union {
-        long one;
-        char little;
-    } is_endian = { 1 };
     // initialize P, note that P is constant once initialized
     P[0] = 0x1; /* VERS */
     P[1] = 0x2; /* method */
@@ -174,34 +180,37 @@ static void PRF(unsigned char *R, const unsigned char *P, unsigned char *Q, size
     }
 }
 
-void FF1_encrypt(const unsigned int *in, unsigned int *out, const unsigned char *tweak, const unsigned int radix, size_t inlen, size_t tweaklen,
+void FF1_encrypt_128(const unsigned int *in, unsigned int *out, const unsigned char *tweak, const unsigned int radix, size_t inlen, size_t tweaklen,
                  EVP_CIPHER_CTX *evp_ctx)
 {
-    BIGNUM *bnum = BN_new(),
-           *y = BN_new(),
-           *c = BN_new(),
-           *anum = BN_new(),
-           *qpow_u = BN_new(),
-           *qpow_v = BN_new();
+    BIGNUM bnum = 0,
+           y = 0,
+           c = 0,
+           anum = 0,
+           qpow_u = 0,
+           qpow_v = 0;
     BN_CTX *ctx = BN_CTX_new();
 	int rc = 0;
 	int outl;
 	
-    union {
-        long one;
-        char little;
-    } is_endian = { 1 };
-
     memcpy(out, in, inlen << 2);
+	// 1.Let u = floor(n/2); v = n – u. 
     int u = floor2(inlen, 1);
     int v = inlen - u;
+	// 2. Let A = X[1..u]; B = X[u + 1 ..n].
     unsigned int *A = out, *B = out + u;
-    pow_uv(qpow_u, qpow_v, radix, u, v, ctx);
+	
+	// save pow(u, radix) and pow(v, radix) for step 6.vi.
+    pow_uv(&qpow_u, &qpow_v, radix, u, v, ctx);
 
+	// 3.Let b = ceil(ceil(v*LOG(radix))/8).
     unsigned int temp = (unsigned int)ceil(v * log2(radix));
     const int b = ceil2(temp, 3);
+	// 4.Let d = 4 * ceil(b/4) + 4.
     const int d = 4 * ceil2(b, 2) + 4;
 
+	// 5.Let P = [1]1 || [2]1 || [1]1 || [radix]3 || [10]1 || [u mod 256]1 || [n]4 || [t]4. 
+	// 6.i. (constant part) Let Q = T || [0](−t−b−1) mod 16
     int pad = ( (-tweaklen - b - 1) % 16 + 16 ) % 16;
     int Qlen = tweaklen + pad + 1 + b;
     unsigned char P[16];
@@ -213,23 +222,30 @@ void FF1_encrypt(const unsigned int *in, unsigned int *out, const unsigned char 
     int cnt = ceil2(d, 4) - 1;
     int Slen = 16 + cnt * 16;
     unsigned char *S = (unsigned char *)OPENSSL_malloc(Slen);
+	// 6.For i from 0 to 9: 
     for (int i = 0; i < FF1_ROUNDS; ++i) {
         // v
+		// 6.v. If i is even, let m = u; else, let m = v.
+		// (do this early so we have m for length of bnum) 
         int m = (i & 1)? v: u;
 
         // i
+		// 6.i. (variable part) Let Q = (constant part) || [i]1 || [NUMradix(B)]b.
         Q[tweaklen + pad] = i & 0xff;
-        str2num(bnum, B, radix, inlen - m, ctx);
-        int BytesLen = BN_bn2bin(bnum, Bytes);
+        str2num(&bnum, B, radix, inlen - m, ctx);
+        int BytesLen = BN_bn2bin(&bnum, Bytes);
         memset(Q + Qlen - b, 0x00, b);
 
         int qtmp = Qlen - BytesLen;
         memcpy(Q + qtmp, Bytes, BytesLen);
+
         // ii
-        // 6.ii. Let R = PRF(P || Q).
+		// 6.ii. Let R = PRF(P || Q). 
         PRF(R, P, Q, Qlen, R_PT, tweaklen, pad, evp_ctx);
         
         // iii 
+		// 6.iii. Let S be the first d bytes of the following string of ceil(d/16)blocks:
+		//        R || CIPHK (R ^ [1]16) || CIPHK (R ^ [2]16) ... CIPHK (R ^ [ceil(d/16)–1]16).
         unsigned char tmp[16], SS[16];
         memset(S, 0x00, Slen);
         assert(Slen >= 16);
@@ -255,30 +271,31 @@ void FF1_encrypt(const unsigned int *in, unsigned int *out, const unsigned char 
         }
 
         // iv
-        BN_bin2bn(S, d, y);
+		// 6.iv. Let y = NUM(S).
+        BN_bin2bn(S, d, &y);
+		// 6.v. If i is even, let m = u; else, let m = v.
+		// (did this at top of loop)
         // vi
         // (num(A, radix, m) + y) % qpow(radix, m);
-        str2num(anum, A, radix, m, ctx);
-        // anum = (anum + y) mod qpow_uv
-        if (m == u)    BN_mod_add(c, anum, y, qpow_u, ctx);
-        else    BN_mod_add(c, anum, y, qpow_v, ctx);
+		// 6.vi. Let c = (NUMradix (A) + y) mod radix m .
+        str2num(&anum, A, radix, m, ctx);
+		// anum = (anum + y) mod qpow_uv
+		// 6.vii. Let C = STR mradix (c).
+		if (m == u) {   BN_mod_add(&c, &anum, &y, &qpow_u, ctx); }
+		else {   BN_mod_add(&c, &anum, &y, &qpow_v, ctx); }
 
         // swap A and B
+		// 6.viii. Let A = B. 
         assert(A != B);
         A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
         B = (unsigned int *)( (uintptr_t)B ^ (uintptr_t)A );
         A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
-        num2str(c, B, radix, m, ctx);
-
+		// 6.ix. Let B = C. 
+        num2str(&c, B, radix, m, ctx);
     }
-
+    // 7. Return A || B
+	// we stored directly in "out"
     // free the space
-    BN_clear_free(anum);
-    BN_clear_free(bnum);
-    BN_clear_free(c);
-    BN_clear_free(y);
-    BN_clear_free(qpow_u);
-    BN_clear_free(qpow_v);
     BN_CTX_free(ctx);
     OPENSSL_free(Bytes);
     OPENSSL_free(Q);
@@ -286,29 +303,24 @@ void FF1_encrypt(const unsigned int *in, unsigned int *out, const unsigned char 
     return;
 }
 
-void FF1_decrypt(const unsigned int *in, unsigned int *out, const unsigned char *tweak, const unsigned int radix, size_t inlen, size_t tweaklen,
+void FF1_decrypt_128(const unsigned int *in, unsigned int *out, const unsigned char *tweak, const unsigned int radix, size_t inlen, size_t tweaklen,
                  EVP_CIPHER_CTX *evp_ctx)
 {
-    BIGNUM *bnum = BN_new(),
-           *y = BN_new(),
-           *c = BN_new(),
-           *anum = BN_new(),
-           *qpow_u = BN_new(),
-           *qpow_v = BN_new();
+    BIGNUM bnum = 0,
+           y = 0,
+           c = 0,
+           anum = 0,
+           qpow_u = 0,
+           qpow_v = 0;
     BN_CTX *ctx = BN_CTX_new();
 	int rc = 0;
 	int outl;
-
-    union {
-        long one;
-        char little;
-    } is_endian = { 1 };
 
     memcpy(out, in, inlen << 2);
     int u = floor2(inlen, 1);
     int v = inlen - u;
     unsigned int *A = out, *B = out + u;
-    pow_uv(qpow_u, qpow_v, radix, u, v, ctx);
+    pow_uv(&qpow_u, &qpow_v, radix, u, v, ctx);
 
     unsigned int temp = (unsigned int)ceil(v * log2(radix));
     const int b = ceil2(temp, 3);
@@ -331,9 +343,9 @@ void FF1_decrypt(const unsigned int *in, unsigned int *out, const unsigned char 
 
         // i
         Q[tweaklen + pad] = i & 0xff;
-        str2num(anum, A, radix, inlen - m, ctx);
+        str2num(&anum, A, radix, inlen - m, ctx);
         memset(Q + Qlen - b, 0x00, b);
-        int BytesLen = BN_bn2bin(anum, Bytes);
+        int BytesLen = BN_bn2bin(&anum, Bytes);
         int qtmp = Qlen - BytesLen;
         memcpy(Q + qtmp, Bytes, BytesLen);
 
@@ -364,28 +376,22 @@ void FF1_decrypt(const unsigned int *in, unsigned int *out, const unsigned char 
         }
 
         // iv
-        BN_bin2bn(S, d, y);
+        BN_bin2bn(S, d, &y);
         // vi
         // (num(B, radix, m) - y) % qpow(radix, m);
-        str2num(bnum, B, radix, m, ctx);
-        if (m == u)    BN_mod_sub(c, bnum, y, qpow_u, ctx);
-        else    BN_mod_sub(c, bnum, y, qpow_v, ctx);
+        str2num(&bnum, B, radix, m, ctx);
+        if (m == u)    BN_mod_sub(&c, &bnum, &y, &qpow_u, ctx);
+        else    BN_mod_sub(&c, &bnum, &y, &qpow_v, ctx);
 
         // swap A and B
         assert(A != B);
         A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
         B = (unsigned int *)( (uintptr_t)B ^ (uintptr_t)A );
         A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
-        num2str(c, A, radix, m, ctx);
+        num2str(&c, A, radix, m, ctx);
     }
 
     // free the space
-    BN_clear_free(anum);
-    BN_clear_free(bnum);
-    BN_clear_free(y);
-    BN_clear_free(c);
-    BN_clear_free(qpow_u);
-    BN_clear_free(qpow_v);
     BN_CTX_free(ctx);
     OPENSSL_free(Bytes);
     OPENSSL_free(Q);
@@ -393,46 +399,14 @@ void FF1_decrypt(const unsigned int *in, unsigned int *out, const unsigned char 
     return;
 }
 
-int FPE_set_ff1_key(const unsigned char *userKey, const int bits, const unsigned char *tweak, const unsigned int tweaklen, const int radix, FPE_KEY *key)
-{
-    int ret;
-    if (bits != 128 && bits != 192 && bits != 256) {
-        ret = -1;
-        return ret;
-    }
-    key->radix = radix;
-    key->tweaklen = tweaklen;
-    key->tweak = (unsigned char *)OPENSSL_malloc(tweaklen);
-    memcpy(key->tweak, tweak, tweaklen);
-    key->evp_ctx = NULL;
-    const EVP_CIPHER *evp_cipher =
-            bits == 128 ? EVP_aes_128_ecb() : bits == 192 ? EVP_aes_192_ecb() : EVP_aes_256_ecb();
-    key->evp_ctx = EVP_CIPHER_CTX_new();
-    if (key->evp_ctx == NULL) {
-        return -3;
-    }
-    if (!EVP_CipherInit_ex(key->evp_ctx, evp_cipher, NULL,
-                           userKey, NULL, 1)) {
-        return -4;
-    }
-    EVP_CIPHER_CTX_set_padding(key->evp_ctx, 0);
-    ret = 0;
-    return ret;
-}
-
-void FPE_unset_ff1_key(FPE_KEY *key)
-{
-    OPENSSL_free(key->tweak);
-    EVP_CIPHER_CTX_free(key->evp_ctx);
-}
-
-void FPE_ff1_encrypt(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc)
+void FPE_ff1_encrypt_128(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc)
 {
     if (enc)
-        FF1_encrypt(in, out, key->tweak,
+        FF1_encrypt_128(in, out, key->tweak,
                     key->radix, inlen, key->tweaklen, key->evp_ctx);
 
     else
-        FF1_decrypt(in, out, key->tweak,
+        FF1_decrypt_128(in, out, key->tweak,
                     key->radix, inlen, key->tweaklen, key->evp_ctx);
 }
+
