@@ -95,3 +95,14 @@ Also, another [implementation in Go](https://github.com/capitalone/fpe) is great
 
 1. Make the API simpler
 2. More effective implementation
+
+## Benchmark
+========== FF1 benchmark==========
+Total iterations: 1000000 completed in 0.919312 seconds
+TPS: in 1087769.984510 seconds
+Per Operation ns: in 0.919312 ns
+
+========== FF3 benchmark==========
+Total iterations: 1000000 completed in 0.984641 seconds
+TPS: in 1015598.578568 seconds
+Per Operation ns: in 0.984641 ns

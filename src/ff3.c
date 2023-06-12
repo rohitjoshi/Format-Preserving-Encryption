@@ -11,7 +11,8 @@
 void rev_bytes(unsigned char X[], int len)
 {
     int hlen = len >> 1;
-    for (int i = 0; i < hlen; ++i) {
+    for (int i = 0; i < hlen; ++i)
+    {
         unsigned char tmp = X[i];
         X[i] = X[len - i - 1];
         X[len - i - 1] = tmp;
@@ -28,7 +29,8 @@ void str2num_rev(BIGNUM *Y, const unsigned int *X, unsigned int radix, unsigned 
 
     BN_set_word(Y, 0);
     BN_set_word(r, radix);
-    for (int i = len - 1; i >= 0; --i) {
+    for (int i = len - 1; i >= 0; --i)
+    {
         // Y = Y * radix + X[i]
         BN_set_word(x, X[i]);
         BN_mul(Y, Y, r, ctx);
@@ -51,8 +53,9 @@ void num2str_rev(const BIGNUM *X, unsigned int *Y, unsigned int radix, int len, 
     BN_copy(XX, X);
     BN_set_word(r, radix);
     memset(Y, 0, len << 2);
-    
-    for (int i = 0; i < len; ++i) {
+
+    for (int i = 0; i < len; ++i)
+    {
         // XX / r = dv ... rem
         BN_div(dv, rem, XX, r, ctx);
         // Y[i] = XX % r
@@ -75,8 +78,8 @@ void FF3_encrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
            *qpow_u = BN_new(),
            *qpow_v = BN_new();
     BN_CTX *ctx = BN_CTX_new();
-	int rc = 0;
-	int outl;
+    int rc = 0;
+    int outl;
 
     memcpy(out, in, inlen << 2);
     int u = ceil2(inlen, 1);
@@ -89,13 +92,17 @@ void FF3_encrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
     unsigned char S[16], P[16];
     unsigned char *Bytes = (unsigned char *)OPENSSL_malloc(b);
 
-    for (int i = 0; i < FF3_ROUNDS; ++i) {
+    for (int i = 0; i < FF3_ROUNDS; ++i)
+    {
         // i
         unsigned int m;
-        if (i & 1) {
+        if (i & 1)
+        {
             m = v;
             memcpy(P, tweak, 4);
-        } else {
+        }
+        else
+        {
             m = u;
             memcpy(P, tweak + 4, 4);
         }
@@ -104,31 +111,34 @@ void FF3_encrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
         str2num_rev(bnum, B, radix, inlen - m, ctx);
         memset(Bytes, 0x00, b);
         int BytesLen = BN_bn2bin(bnum, Bytes);
-        BytesLen = BytesLen > 12? 12: BytesLen;
+        BytesLen = BytesLen > 12 ? 12 : BytesLen;
         memset(P + 4, 0x00, 12);
         memcpy(P + 16 - BytesLen, Bytes, BytesLen);
 
         // iii
         rev_bytes(P, 16);
+        
         rc = EVP_EncryptUpdate(evp_ctx, S, &outl, P, 16);
         assert(rc == 1);
         rev_bytes(S, 16);
+        
 
         // iv
         BN_bin2bn(S, 16, y);
 
         // v
         str2num_rev(anum, A, radix, m, ctx);
-        if (i & 1)    BN_mod_add(c, anum, y, qpow_v, ctx);
-        else    BN_mod_add(c, anum, y, qpow_u, ctx);
+        if (i & 1)
+            BN_mod_add(c, anum, y, qpow_v, ctx);
+        else
+            BN_mod_add(c, anum, y, qpow_u, ctx);
 
         assert(A != B);
-        A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
-        B = (unsigned int *)( (uintptr_t)B ^ (uintptr_t)A );
-        A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
+        A = (unsigned int *)((uintptr_t)A ^ (uintptr_t)B);
+        B = (unsigned int *)((uintptr_t)B ^ (uintptr_t)A);
+        A = (unsigned int *)((uintptr_t)A ^ (uintptr_t)B);
 
         num2str_rev(c, B, radix, m, ctx);
-
     }
 
     // free the space
@@ -153,8 +163,8 @@ void FF3_decrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
            *qpow_u = BN_new(),
            *qpow_v = BN_new();
     BN_CTX *ctx = BN_CTX_new();
-	int rc = 0;
-	int outl;
+    int rc = 0;
+    int outl;
 
     memcpy(out, in, inlen << 2);
     int u = ceil2(inlen, 1);
@@ -166,13 +176,17 @@ void FF3_decrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
 
     unsigned char S[16], P[16];
     unsigned char *Bytes = (unsigned char *)OPENSSL_malloc(b);
-    for (int i = FF3_ROUNDS - 1; i >= 0; --i) {
+    for (int i = FF3_ROUNDS - 1; i >= 0; --i)
+    {
         // i
         int m;
-        if (i & 1) {
+        if (i & 1)
+        {
             m = v;
             memcpy(P, tweak, 4);
-        } else {
+        }
+        else
+        {
             m = u;
             memcpy(P, tweak + 4, 4);
         }
@@ -183,10 +197,10 @@ void FF3_decrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
         str2num_rev(anum, A, radix, inlen - m, ctx);
         memset(Bytes, 0x00, b);
         int BytesLen = BN_bn2bin(anum, Bytes);
-        BytesLen = BytesLen > 12? 12: BytesLen;
+        BytesLen = BytesLen > 12 ? 12 : BytesLen;
         memset(P + 4, 0x00, 12);
         memcpy(P + 16 - BytesLen, Bytes, BytesLen);
-       
+
         // iii
         rev_bytes(P, 16);
         memset(S, 0x00, sizeof(S));
@@ -199,16 +213,17 @@ void FF3_decrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
 
         // v
         str2num_rev(bnum, B, radix, m, ctx);
-        if (i & 1)    BN_mod_sub(c, bnum, y, qpow_v, ctx);
-        else    BN_mod_sub(c, bnum, y, qpow_u, ctx);
+        if (i & 1)
+            BN_mod_sub(c, bnum, y, qpow_v, ctx);
+        else
+            BN_mod_sub(c, bnum, y, qpow_u, ctx);
 
         assert(A != B);
-        A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
-        B = (unsigned int *)( (uintptr_t)B ^ (uintptr_t)A );
-        A = (unsigned int *)( (uintptr_t)A ^ (uintptr_t)B );
+        A = (unsigned int *)((uintptr_t)A ^ (uintptr_t)B);
+        B = (unsigned int *)((uintptr_t)B ^ (uintptr_t)A);
+        A = (unsigned int *)((uintptr_t)A ^ (uintptr_t)B);
 
         num2str_rev(c, A, radix, m, ctx);
-
     }
 
     // free the space
@@ -226,7 +241,8 @@ void FF3_decrypt(unsigned int *in, unsigned int *out, const unsigned char *tweak
 int FPE_set_ff3_key(const unsigned char *userKey, const int bits, const unsigned char *tweak, const unsigned int radix, FPE_KEY *key)
 {
     int ret;
-    if (bits != 128 && bits != 192 && bits != 256) {
+    if (bits != 128 && bits != 192 && bits != 256)
+    {
         ret = -1;
         return ret;
     }
@@ -240,13 +256,16 @@ int FPE_set_ff3_key(const unsigned char *userKey, const int bits, const unsigned
     rev_bytes(tmp, bits >> 3);
     key->evp_ctx = NULL;
     const EVP_CIPHER *evp_cipher =
-            bits == 128 ? EVP_aes_128_ecb() : bits == 192 ? EVP_aes_192_ecb() : EVP_aes_256_ecb();
+        bits == 128 ? EVP_aes_128_ecb() : bits == 192 ? EVP_aes_192_ecb()
+                                                      : EVP_aes_256_ecb();
     key->evp_ctx = EVP_CIPHER_CTX_new();
-    if (key->evp_ctx == NULL) {
+    if (key->evp_ctx == NULL)
+    {
         return -3;
     }
     if (!EVP_CipherInit_ex(key->evp_ctx, evp_cipher, NULL,
-                           tmp, NULL, 1)) {
+                           tmp, NULL, 1))
+    {
         return -4;
     }
     EVP_CIPHER_CTX_set_padding(key->evp_ctx, 0);
@@ -265,6 +284,6 @@ void FPE_ff3_encrypt(unsigned int *in, unsigned int *out, unsigned int inlen, FP
     if (enc)
         FF3_encrypt(in, out, key->tweak, key->radix, inlen, key->evp_ctx);
 
-    else 
+    else
         FF3_decrypt(in, out, key->tweak, key->radix, inlen, key->evp_ctx);
 }

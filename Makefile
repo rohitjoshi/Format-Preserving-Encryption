@@ -1,4 +1,4 @@
-CFLAGS = -O2 -Wall -fPIC
+CFLAGS = -O2 -Wall -fPIC -I/opt/homebrew/Cellar/openssl@3/3.1/include/openssl
 SO_LINKS = -lm -lcrypto
 
 LIB = libfpe.a libfpe.so
@@ -12,7 +12,7 @@ libfpe.a: $(OBJS)
 	ar rcs $@ $(OBJS)
 
 libfpe.so: $(OBJS)
-	cc -shared -fPIC -Wl,-soname,libfpe.so $(OBJS) $(SO_LINKS) -o $@
+	cc -shared -fPIC -Wl,-install_name,libfpe.so $(OBJS) $(SO_LINKS) -o $@
 
 .PHONY = all clean
 
@@ -32,7 +32,8 @@ src/fpe_locl.o: src/fpe_locl.c
 	cc $(CFLAGS) -c src/fpe_locl.c -o $@
 
 $(EXAMPLE_EXE): $(EXAMPLE_SRC) $(LIB)
-	gcc -Wl,-rpath=\$$ORIGIN $(EXAMPLE_SRC) -L. -lfpe -Isrc -O2 -o $@
+	gcc -Wl  $(EXAMPLE_SRC) -L. -lfpe -Isrc -O2 -o $@
+	#gcc -Wl,-rpath=\$$ORIGIN $(EXAMPLE_SRC) -L. -lfpe -Isrc -O2 -o $@
 
 clean:
 	rm $(OBJS) $(EXAMPLE_EXE) $(LIB)
