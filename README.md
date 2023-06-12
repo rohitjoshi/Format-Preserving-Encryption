@@ -97,12 +97,15 @@ Also, another [implementation in Go](https://github.com/capitalone/fpe) is great
 2. More effective implementation
 
 ## Benchmark
-========== FF1 benchmark==========
+========== FF1 benchmark (10 rounds) ==========
+```
 Total iterations: 1000000 completed in 0.919312 seconds
-TPS: in 1087769.984510 seconds
+TPS: 1,087,769 / second
 Per Operation ns: in 0.919312 ns
-
-========== FF3 benchmark==========
+```
+========== FF3 benchmark (8 rounds) ==========
+```
 Total iterations: 1000000 completed in 0.984641 seconds
-TPS: in 1015598.578568 seconds
+TPS: 1,015,598 / second
 Per Operation ns: in 0.984641 ns
+```
