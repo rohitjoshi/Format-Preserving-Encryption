@@ -393,6 +393,8 @@ void FF1_decrypt(const unsigned int *in, unsigned int *out, const unsigned char 
     return;
 }
 
+
+
 int FPE_set_ff1_key(const unsigned char *userKey, const int bits, const unsigned char *tweak, const unsigned int tweaklen, const int radix, FPE_KEY *key)
 {
     int ret;
@@ -400,6 +402,14 @@ int FPE_set_ff1_key(const unsigned char *userKey, const int bits, const unsigned
         ret = -1;
         return ret;
     }
+    if (key == NULL) {
+      key = malloc( sizeof( FPE_KEY ));
+    }
+//    printf("Tweak:");
+//    for(int i =0; i < tweaklen; i++) {
+//        printf("%d", tweak[i]);
+//    }
+//    printf("\n");
     key->radix = radix;
     key->tweaklen = tweaklen;
     key->tweak = (unsigned char *)OPENSSL_malloc(tweaklen);

@@ -66,6 +66,8 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    unsigned int total = 10000000;
+
     unsigned char k[100],
         t[100],
         result[100];
@@ -93,31 +95,97 @@ int main(int argc, char *argv[])
     if (tlen)
         printf("tweak:");
     for (int i = 0; i < tlen; ++i)
-        printf(" %02x", t[i]);
+        printf(" %02x:%d", t[i],t[i]);
     if (tlen)
         puts("");
 
+    printf("BITS:%d\n",klen * 8 );
     FPE_set_ff1_key(k, klen * 8, t, tlen, radix, &ff1);
     FPE_set_ff3_key(k, klen * 8, t, radix, &ff3);
 
     printf("after map: ");
     for (int i = 0; i < xlen; ++i)
-        printf(" %d", x[i]);
+        printf("%d", x[i]);
     printf("\n\n");
 
-    printf("========== FF1 benchmark==========\n");
+
+    printf("========== FF1 native 128 test==========\n");
+    FPE_ff1_encrypt_128(x, y, xlen, &ff1, FPE_ENCRYPT);
+
+    printf("ciphertext(numeral string):");
+        for (int i = 0; i < xlen; ++i)
+            printf(" %d", y[i]);
+        printf("\n");
+
+    inverse_map_chars(y, result, xlen);
+    printf("ciphertext: %s\n\n", result);
+
+    printf("========== FF1  test==========\n");
+        FPE_ff1_encrypt(x, y, xlen, &ff1, FPE_ENCRYPT);
+
+        printf("ciphertext(numeral string):");
+            for (int i = 0; i < xlen; ++i)
+                printf(" %d", y[i]);
+            printf("\n");
+
+        inverse_map_chars(y, result, xlen);
+        printf("ciphertext: %s\n\n", result);
+
+    printf("========== FF3 native 128 test==========\n");
+        FPE_ff3_encrypt_128(x, y, xlen, &ff3, FPE_ENCRYPT);
+
+        printf("ciphertext(numeral string):");
+            for (int i = 0; i < xlen; ++i)
+                printf(" %d", y[i]);
+            printf("\n");
+
+        inverse_map_chars(y, result, xlen);
+        printf("ciphertext: %s\n\n", result);
+
+   printf("========== FF3  test==========\n");
+           FPE_ff3_encrypt(x, y, xlen, &ff3, FPE_ENCRYPT);
+
+           printf("ciphertext(numeral string):");
+               for (int i = 0; i < xlen; ++i)
+                   printf(" %d", y[i]);
+               printf("\n");
+
+           inverse_map_chars(y, result, xlen);
+           printf("ciphertext: %s\n\n", result);
+    printf("========== FF1 native 128 benchmark==========\n");
     // benchmark_ff1(x, xlen, &ff1);
-    unsigned int total = 1000000;
+
     clock_t start_time = clock();
     for (uint32_t i = 0; i < total; i++)
     {
+        //sprintf(x, "%09d", i);
+        map_chars(argv[4], x);
         unsigned int y[xlen];
+        //sprintf(x, "%09d", i);
         FPE_ff1_encrypt_128(x, y, xlen, &ff1, FPE_ENCRYPT);
+        inverse_map_chars(y, result, xlen);
     }
     double elapsed_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
+    printf("Total iterations: %ld completed in %f seconds\n", total, elapsed_time);
+    printf("TPS: in %f seconds\n", total / elapsed_time);
+    printf("Per Operation ns: in %f ns\n", elapsed_time * 1000 * 1000 * 1000 / total);
+
+    printf("========== FF1 benchmark==========\n");
+    // benchmark_ff1(x, xlen, &ff1);
+
+    start_time = clock();
+    for (uint32_t i = 0; i < total; i++)
+    {
+        sprintf(x, "%09d", i);
+        int xlen = strlen(x);
+        unsigned int y[xlen];
+        sprintf(x, "%09d", i);
+        FPE_ff1_encrypt(x, y, xlen, &ff1, FPE_ENCRYPT);
+    }
+    elapsed_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
     printf("Total iterations: %d completed in %f seconds\n", total, elapsed_time);
     printf("TPS: in %f seconds\n", total / elapsed_time);
-    printf("Per Operation ns: in %f ns\n", (elapsed_time * 1000 * 1000) / total);
+    printf("Per Operation ns: in %f ns\n", (elapsed_time * 1000 * 1000 * 1000) / total);
 
     printf("========== FF1 ==========\n");
     FPE_ff1_encrypt_128(x, y, xlen, &ff1, FPE_ENCRYPT);
@@ -138,20 +206,42 @@ int main(int argc, char *argv[])
         printf(" %d", x[i]);
     printf("\n\n");
 
+    printf("========== FF3 native 128 benchmark==========\n");
+    // benchmark_ff1(x, xlen, &ff1);
+
+    start_time = clock();
+    for (uint32_t i = 0; i < total; i++)
+    {
+        sprintf(x, "%09d", i);
+        int xlen = strlen(x);
+        unsigned int y[xlen];
+        sprintf(x, "%09d", i);
+        FPE_ff3_encrypt_128(x, y, xlen, &ff1, FPE_ENCRYPT);
+    }
+    elapsed_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
+    printf("Total iterations: %d completed in %f seconds\n", total, elapsed_time);
+    printf("TPS: in %f seconds\n", total / elapsed_time);
+    printf("Per Operation ns: in %f ns\n", (elapsed_time * 1000 * 1000 * 1000) / total);
+    printf("========== FF3 ==========\n");
+
     printf("========== FF3 benchmark==========\n");
     // benchmark_ff1(x, xlen, &ff1);
 
     start_time = clock();
     for (uint32_t i = 0; i < total; i++)
     {
+        sprintf(x, "%09d", i);
+        int xlen = strlen(x);
         unsigned int y[xlen];
-        FPE_ff3_encrypt_128(x, y, xlen, &ff1, FPE_ENCRYPT);
+        sprintf(x, "%09d", i);
+        FPE_ff3_encrypt(x, y, xlen, &ff1, FPE_ENCRYPT);
     }
     elapsed_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
     printf("Total iterations: %d completed in %f seconds\n", total, elapsed_time);
     printf("TPS: in %f seconds\n", total / elapsed_time);
-    printf("Per Operation ns: in %f ns\n", (elapsed_time * 1000 * 1000) / total);
+    printf("Per Operation ns: in %f ns\n", (elapsed_time * 1000 * 1000 * 1000) / total);
     printf("========== FF3 ==========\n");
+
     FPE_ff3_encrypt_128(x, y, xlen, &ff3, FPE_ENCRYPT);
 
     printf("ciphertext(numeral string):");

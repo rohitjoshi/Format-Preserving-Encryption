@@ -1,5 +1,5 @@
-CFLAGS = -O2 -Wall -fPIC -I/opt/homebrew/Cellar/openssl@3/3.1/include/openssl
-SO_LINKS = -lm -lcrypto
+CFLAGS = -arch arm64 -O2 -Wall -fPIC -I/opt/homebrew/Cellar/openssl@3/3.1/include/openssl
+SO_LINKS = -arch arm64 -lm -lcrypto
 
 LIB = libfpe.a libfpe.so
 EXAMPLE_SRC = example.c
@@ -32,7 +32,7 @@ src/fpe_locl.o: src/fpe_locl.c
 	cc $(CFLAGS) -c src/fpe_locl.c -o $@
 
 $(EXAMPLE_EXE): $(EXAMPLE_SRC) $(LIB)
-	gcc -Wl  $(EXAMPLE_SRC) -L. -lfpe -Isrc -O2 -o $@
+	cc -Wl  $(EXAMPLE_SRC) -L. -lfpe -Isrc -O2 -o $@
 	#gcc -Wl,-rpath=\$$ORIGIN $(EXAMPLE_SRC) -L. -lfpe -Isrc -O2 -o $@
 
 clean:

@@ -21,6 +21,8 @@ typedef int128_t native_signed_t;
 // to point to our local native implementation
 #include "bignum_native.h"
 
+
+
 static union {
 	long one;
 	char little;
@@ -183,6 +185,7 @@ static void PRF(unsigned char *R, const unsigned char *P, unsigned char *Q, size
 void FF1_encrypt_128(const unsigned int *in, unsigned int *out, const unsigned char *tweak, const unsigned int radix, size_t inlen, size_t tweaklen,
                  EVP_CIPHER_CTX *evp_ctx)
 {
+   // printf("FF1_encrypt_128: evp_ctx:%p\n", evp_ctx);
     BIGNUM bnum = 0,
            y = 0,
            c = 0,
@@ -192,16 +195,22 @@ void FF1_encrypt_128(const unsigned int *in, unsigned int *out, const unsigned c
     BN_CTX *ctx = BN_CTX_new();
 	int rc = 0;
 	int outl;
-	
+
+	//printf("FF1_encrypt_128:inlen: %zu, tweaklen:%zu\n", inlen, tweaklen);
+	// printf("FF1_encrypt_128: radix: %zu\n", radix);
     memcpy(out, in, inlen << 2);
 	// 1.Let u = floor(n/2); v = n – u. 
     int u = floor2(inlen, 1);
     int v = inlen - u;
 	// 2. Let A = X[1..u]; B = X[u + 1 ..n].
     unsigned int *A = out, *B = out + u;
+
+    //printf("FF1_encrypt_128-2\n");
 	
 	// save pow(u, radix) and pow(v, radix) for step 6.vi.
     pow_uv(&qpow_u, &qpow_v, radix, u, v, ctx);
+
+    // printf("FF1_encrypt_128-3\n");
 
 	// 3.Let b = ceil(ceil(v*LOG(radix))/8).
     unsigned int temp = (unsigned int)ceil(v * log2(radix));
@@ -209,21 +218,31 @@ void FF1_encrypt_128(const unsigned int *in, unsigned int *out, const unsigned c
 	// 4.Let d = 4 * ceil(b/4) + 4.
     const int d = 4 * ceil2(b, 2) + 4;
 
+     //printf("FF1_encrypt_128-4\n");
+
 	// 5.Let P = [1]1 || [2]1 || [1]1 || [radix]3 || [10]1 || [u mod 256]1 || [n]4 || [t]4. 
 	// 6.i. (constant part) Let Q = T || [0](−t−b−1) mod 16
     int pad = ( (-tweaklen - b - 1) % 16 + 16 ) % 16;
     int Qlen = tweaklen + pad + 1 + b;
+
+    // printf("FF1_encrypt_128-5\n");
     unsigned char P[16];
     unsigned char *Q = (unsigned char *)OPENSSL_malloc(Qlen), *Bytes = (unsigned char *)OPENSSL_malloc(b);
+     //printf("FF1_encrypt_128-6\n");
     initialize_P_Q(P, Q, Qlen, radix, inlen, u, tweak, tweaklen, pad);
+    // printf("FF1_encrypt_128-7\n");
     unsigned char R_PT[16]; // R value as far as P+tweak+pad, constant once initialized
     PRF(R_PT, P, Q, Qlen, NULL, tweaklen, pad, evp_ctx);
+    // printf("FF1_encrypt_128-8\n");
     unsigned char R[16];
     int cnt = ceil2(d, 4) - 1;
     int Slen = 16 + cnt * 16;
     unsigned char *S = (unsigned char *)OPENSSL_malloc(Slen);
+
+    //printf("FF1_encrypt_128:before loop");
 	// 6.For i from 0 to 9: 
     for (int i = 0; i < FF1_ROUNDS; ++i) {
+         //printf("FF1_encrypt_128: round: %d\n", i);
         // v
 		// 6.v. If i is even, let m = u; else, let m = v.
 		// (do this early so we have m for length of bnum) 
@@ -251,6 +270,7 @@ void FF1_encrypt_128(const unsigned int *in, unsigned int *out, const unsigned c
         assert(Slen >= 16);
         memcpy(S, R, 16);
         for (int j = 1; j <= cnt; ++j) {
+        //printf("FF1_encrypt_128: j loop: %d\n", j);
             memset(tmp, 0x00, 16);
 
             if (is_endian.little) {
@@ -293,6 +313,7 @@ void FF1_encrypt_128(const unsigned int *in, unsigned int *out, const unsigned c
 		// 6.ix. Let B = C. 
         num2str(&c, B, radix, m, ctx);
     }
+    //printf("FF1_encrypt_128: done\n");
     // 7. Return A || B
 	// we stored directly in "out"
     // free the space
@@ -300,6 +321,7 @@ void FF1_encrypt_128(const unsigned int *in, unsigned int *out, const unsigned c
     OPENSSL_free(Bytes);
     OPENSSL_free(Q);
     OPENSSL_free(S);
+    //printf("FF1_encrypt_128: before return\n");
     return;
 }
 
@@ -402,11 +424,59 @@ void FF1_decrypt_128(const unsigned int *in, unsigned int *out, const unsigned c
 void FPE_ff1_encrypt_128(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc)
 {
     if (enc)
-        FF1_encrypt_128(in, out, key->tweak,
-                    key->radix, inlen, key->tweaklen, key->evp_ctx);
+        FF1_encrypt_128(in, out, key->tweak, key->radix, inlen, key->tweaklen, key->evp_ctx);
 
     else
-        FF1_decrypt_128(in, out, key->tweak,
-                    key->radix, inlen, key->tweaklen, key->evp_ctx);
+        FF1_decrypt_128(in, out, key->tweak, key->radix, inlen, key->tweaklen, key->evp_ctx);
 }
+
+ struct fpe_ctx_st
+    {
+        EVP_CIPHER_CTX *evp_ctx;
+    };
+ typedef struct fpe_ctx_st FPE_CTX;
+int FPE_NATIVE_set_ff1_key(const unsigned char *userKey, const int bits, FPE_CTX *fpe_ctx)
+{
+    int ret;
+    if (bits != 128 && bits != 192 && bits != 256) {
+        ret = -1;
+        return ret;
+    }
+
+    const EVP_CIPHER *evp_cipher =
+            bits == 128 ? EVP_aes_128_ecb() : bits == 192 ? EVP_aes_192_ecb() : EVP_aes_256_ecb();
+    fpe_ctx->evp_ctx = EVP_CIPHER_CTX_new();
+    if (fpe_ctx->evp_ctx == NULL) {
+        return -3;
+    }
+    if (!EVP_CipherInit_ex( fpe_ctx->evp_ctx, evp_cipher, NULL,
+                           userKey, NULL, 1)) {
+        return -4;
+    }
+    EVP_CIPHER_CTX_set_padding( fpe_ctx->evp_ctx, 0);
+    ret = 0;
+    return ret;
+}
+
+void FPE_NATIVE_unset_ff1_key(FPE_CTX *fpe_ctx)
+{
+    if ( fpe_ctx->evp_ctx == NULL) {
+      EVP_CIPHER_CTX_free( fpe_ctx->evp_ctx);
+      fpe_ctx->evp_ctx = NULL;
+    }
+}
+
+void FPE_NATIVE_ff1_encrypt(unsigned int *in, unsigned int inlen, const unsigned char *tweak, const unsigned int tweaklen, const unsigned int radix, FPE_CTX *fpe_ctx, unsigned int *out)
+{
+  FF1_encrypt_128(in, out, tweak,
+                      radix, inlen, tweaklen,  fpe_ctx->evp_ctx);
+}
+void FPE_NATIVE_ff1_decrypt(unsigned int *in, unsigned int inlen, const unsigned char *tweak, const unsigned int tweaklen, const unsigned int radix, FPE_CTX *fpe_ctx, unsigned int *out)
+{
+ FF1_decrypt_128(in, out, tweak,
+                            radix, inlen, tweaklen,  fpe_ctx->evp_ctx);
+}
+
+
+
 

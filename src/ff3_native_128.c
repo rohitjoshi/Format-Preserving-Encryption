@@ -256,3 +256,54 @@ void FPE_ff3_encrypt_128(unsigned int *in, unsigned int *out, unsigned int inlen
     else
         FF3_decrypt_128(in, out, key->tweak, key->radix, inlen, key->evp_ctx);
 }
+
+ struct fpe_ctx_st
+    {
+        EVP_CIPHER_CTX *evp_ctx;
+    };
+
+ typedef struct fpe_ctx_st FPE_CTX;
+int FPE_NATIVE_set_ff3_key(const unsigned char *userKey, const int bits, FPE_CTX *fpe_ctx)
+{
+    int ret;
+    if (bits != 128 && bits != 192 && bits != 256) {
+        ret = -1;
+        return ret;
+    }
+
+    const EVP_CIPHER *evp_cipher =
+            bits == 128 ? EVP_aes_128_ecb() : bits == 192 ? EVP_aes_192_ecb() : EVP_aes_256_ecb();
+    fpe_ctx->evp_ctx = EVP_CIPHER_CTX_new();
+    if (fpe_ctx->evp_ctx == NULL) {
+        return -3;
+    }
+     unsigned char tmp[32];
+     memcpy(tmp, userKey, bits >> 3);
+     rev_bytes(tmp, bits >> 3);
+    if (!EVP_CipherInit_ex(fpe_ctx->evp_ctx, evp_cipher, NULL,
+                           tmp, NULL, 1)) {
+        return -4;
+    }
+    EVP_CIPHER_CTX_set_padding(fpe_ctx->evp_ctx, 0);
+    ret = 0;
+    return ret;
+}
+
+void FPE_NATIVE_unset_ff3_key(FPE_CTX *fpe_ctx)
+{
+    if (fpe_ctx->evp_ctx == NULL) {
+      EVP_CIPHER_CTX_free(fpe_ctx->evp_ctx);
+      fpe_ctx->evp_ctx = NULL;
+    }
+}
+
+void FPE_NATIVE_ff3_encrypt(unsigned int *in, unsigned int inlen, const unsigned char *tweak,  const unsigned int radix, FPE_CTX *fpe_ctx, unsigned int *out)
+{
+  FF3_encrypt_128(in, out, tweak,
+                      radix, inlen, fpe_ctx->evp_ctx);
+}
+void FPE_NATIVE_ff3_decrypt(unsigned int *in, unsigned int inlen, const unsigned char *tweak, const unsigned int radix, FPE_CTX *fpe_ctx, unsigned int *out)
+{
+ FF3_decrypt_128(in, out, tweak,
+                            radix, inlen, fpe_ctx->evp_ctx);
+}

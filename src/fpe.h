@@ -33,6 +33,7 @@ extern "C"
     void FPE_ff1_encrypt(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc);
     void FPE_ff1_encrypt_128(unsigned int *in, unsigned int *out, unsigned int inlen, FPE_KEY *key, const int enc);
 
+
     /*** FF3 ***/
     int FPE_set_ff3_key(const unsigned char *userKey, const int bits, const unsigned char *tweak, const unsigned int radix, FPE_KEY *key);
 
