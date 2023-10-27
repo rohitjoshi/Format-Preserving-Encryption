@@ -1,0 +1,4 @@
+libfpe.*
+src/*.o
+libfpe.*
+example

@@ -1,5 +1,8 @@
+CC=clang
+cc=clang
 #CFLAGS = -arch arm64 -O2 -Wall -fPIC -I/opt/homebrew/Cellar/openssl@3/3.1/include/openssl
-CFLAGS =  -O2 -Wall -fPIC -I/opt/homebrew/Cellar/openssl@3/3.1/include/openssl
+#CFLAGS =  -O2 -Wall -fPIC -I/opt/homebrew/Cellar/openssl@3/3.1/include/openssl
+CFLAGS =  -O2 -Wall -fPIC
 SO_LINKS =  -lm -lcrypto
 #SO_LINKS = -arch arm64 -lm -lcrypto
 
